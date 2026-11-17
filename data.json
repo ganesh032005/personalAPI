@@ -1,0 +1,35 @@
+{
+  "about": {
+    "name": "Ganesh",
+    "tagline": "CS student who likes building things with code and AI",
+    "location": "Tamil Nadu, India",
+    "education": "B.E. Computer Science Engineering, Sethu Institute of Technology (batch 2027)"
+  },
+  "skills": {
+    "languages": ["Java", "Python"],
+    "ai": ["RAG", "LangChain", "LangGraph", "Sentiment Analysis"]
+  },
+  "projects": [
+    {
+      "name": "RAG Chatbot",
+      "description": "Chatbot that answers questions from your own documents using retrieval-augmented generation."
+    },
+    {
+      "name": "Sentiment Analysis API",
+      "description": "API that classifies the sentiment of text."
+    },
+    {
+      "name": "Multi-Agent Research Assistant",
+      "description": "LangGraph-based agents that research a topic and write a report."
+    },
+    {
+      "name": "Safe Campus",
+      "description": "Emergency alert app for campuses (group project, I built the UI)."
+    }
+  ],
+  "links": {
+    "github": "https://github.com/ganesh032005"
+  },
+  "interests": ["TODO: add your hobbies"],
+  "fun_facts": ["TODO: add a fun fact about yourself"]
+}

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ganesh's Dashboard</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #14181f; --muted: #667085; --line: #e4e7ec;
+    --a: #4f46e5; --b: #0d9488; --c: #d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116; --card: #171b22; --text: #e8ebf0; --muted: #98a2b3; --line: #2a303a;
+      --a: #818cf8; --b: #2dd4bf; --c: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .grid { display: grid; gap: 16px; }
+  .stats { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 16px; }
+  .charts { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+  @media (max-width: 480px) { .charts { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat .label { color: var(--muted); font-size: 13px; }
+  .stat .val { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .box { position: relative; height: 240px; }
+  .empty { color: var(--muted); display: grid; place-items: center; height: 100%; text-align: center; }
+  .repos { grid-column: 1 / -1; }
+  .repo { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0;
+          border-top: 1px solid var(--line); }
+  .repo:first-of-type { border-top: 0; }
+  .repo a { color: var(--a); text-decoration: none; font-weight: 600; }
+  .repo .d { color: var(--muted); font-size: 13px; }
+  .repo .m { color: var(--muted); font-size: 13px; white-space: nowrap; text-align: right; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ganesh's Dashboard</h1>
+  <p class="sub" id="sub">Daily numbers and GitHub activity</p>
+  <div class="grid stats" id="stats"></div>
+  <div class="grid charts">
+    <div class="card"><h2>Screen time (hours/day, last 30 days)</h2><div class="box" id="b-screen"><canvas id="c-screen"></canvas></div></div>
+    <div class="card"><h2>Workout minutes (last 30 days)</h2><div class="box" id="b-workout"><canvas id="c-workout"></canvas></div></div>
+    <div class="card"><h2>GitHub commits per day (last 30 days)</h2><div class="box" id="b-commits"><canvas id="c-commits"></canvas></div></div>
+    <div class="card"><h2>Languages across my repos</h2><div class="box" id="b-langs"><canvas id="c-langs"></canvas></div></div>
+    <div class="card repos"><h2>Recently pushed repos</h2><div id="repos"></div></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const palette = () => [css('--a'), css('--b'), css('--c'), '#e11d48', '#0ea5e9', '#8b5cf6'];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ' -> ' + r.status);
+  return r.json();
+}
+
+function fmtMin(m) {
+  if (m == null) return '–';
+  const h = Math.floor(m / 60), mm = Math.round(m % 60);
+  return h ? `${h}h ${mm}m` : `${mm}m`;
+}
+
+function showEmpty(id, msg) {
+  document.getElementById(id).innerHTML = `<div class="empty">${esc(msg)}</div>`;
+}
+
+function baseOptions(stacked) {
+  const muted = css('--muted'), line = css('--line');
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: muted } } },
+    scales: {
+      x: { stacked, ticks: { color: muted, maxTicksLimit: 8 }, grid: { display: false } },
+      y: { stacked, beginAtZero: true, ticks: { color: muted }, grid: { color: line } },
+    },
+  };
+}
+
+const hasData = vals => vals.some(v => v != null);
+const shortDays = days => days.map(d => d.slice(5));
+
+function stat(label, value) {
+  return `<div class="card stat"><div class="label">${esc(label)}</div><div class="val">${esc(value)}</div></div>`;
+}
+
+async function loadLog() {
+  try {
+    const [sum, screen, workout] = await Promise.all([
+      getJSON('/stats/summary'),
+      getJSON('/stats/screen_time_min?days=30'),
+      getJSON('/stats/workout_min?days=30'),
+    ]);
+    const el = document.getElementById('stats');
+    el.insertAdjacentHTML('beforeend',
+      stat('Screen time today', fmtMin(sum.today.screen_time_min)) +
+      stat('Screen time, 7-day avg', fmtMin(sum.screen_time_7d_avg_min)) +
+      stat('Workout days (30d)', sum.workout_days_30d) +
+      stat('Workout streak', sum.workout_streak + (sum.workout_streak === 1 ? ' day' : ' days')));
+
+    const pal = palette();
+    const sDevices = Object.keys(screen.series);
+    if (sDevices.length) {
+      new Chart('c-screen', {
+        type: 'bar',
+        data: {
+          labels: shortDays(screen.days),
+          datasets: sDevices.map((d, i) => ({
+            label: d, backgroundColor: pal[i % pal.length],
+            data: screen.series[d].map(v => v == null ? null : +(v / 60).toFixed(2)),
+          })),
+        },
+        options: baseOptions(true),
+      });
+    } else showEmpty('b-screen', 'No screen time logged yet.');
+
+    const wDevices = Object.keys(workout.series);
+    if (wDevices.length && wDevices.some(d => hasData(workout.series[d]))) {
+      new Chart('c-workout', {
+        type: 'bar',
+        data: {
+          labels: shortDays(workout.days),
+          datasets: wDevices.map((d, i) => ({
+            label: d, backgroundColor: pal[(i + 1) % pal.length], data: workout.series[d],
+          })),
+        },
+        options: baseOptions(true),
+      });
+    } else showEmpty('b-workout', 'No workouts logged yet.');
+  } catch (e) {
+    showEmpty('b-screen', 'Could not load daily data.');
+    showEmpty('b-workout', 'Could not load daily data.');
+  }
+}
+
+async function loadGitHub() {
+  try {
+    const [gh, act] = await Promise.all([getJSON('/github'), getJSON('/github/activity?days=30')]);
+    document.getElementById('stats').insertAdjacentHTML('beforeend',
+      stat('Public repos', gh.public_repos) + stat('Commits (30d)', act.commits.reduce((a, b) => a + b, 0)));
+    document.getElementById('sub').textContent = `Daily numbers and GitHub activity for @${gh.username}`;
+
+    const pal = palette();
+    if (hasData(act.commits) && act.commits.some(v => v > 0)) {
+      new Chart('c-commits', {
+        type: 'bar',
+        data: { labels: shortDays(act.days), datasets: [{ label: 'commits', backgroundColor: pal[1], data: act.commits }] },
+        options: { ...baseOptions(false), plugins: { legend: { display: false } } },
+      });
+    } else showEmpty('b-commits', 'No public pushes in the last 30 days.');
+
+    const langs = Object.entries(gh.languages);
+    if (langs.length) {
+      new Chart('c-langs', {
+        type: 'doughnut',
+        data: { labels: langs.map(l => l[0]), datasets: [{ data: langs.map(l => l[1]), backgroundColor: pal, borderColor: css('--card') }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: css('--muted') } } } },
+      });
+    } else showEmpty('b-langs', 'No language data.');
+
+    document.getElementById('repos').innerHTML = gh.recent_repos.map(r => `
+      <div class="repo">
+        <div><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>
+        <div class="d">${esc(r.description || 'No description')}</div></div>
+        <div class="m">${esc(r.language || '')}<br>${esc((r.pushed_at || '').slice(0, 10))}</div>
+      </div>`).join('') || '<div class="empty">No repos found.</div>';
+  } catch (e) {
+    showEmpty('b-commits', 'GitHub data unavailable (rate limit?). Try again soon.');
+    showEmpty('b-langs', 'GitHub data unavailable.');
+    document.getElementById('repos').innerHTML = '<div class="empty">GitHub data unavailable.</div>';
+  }
+}
+
+loadLog();
+loadGitHub();
+</script>
+</body>
+</html>

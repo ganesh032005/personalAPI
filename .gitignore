@@ -1,0 +1,16 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Personal database and backups
+personal.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
